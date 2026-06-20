@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/leaflet/1.9.4/leaflet.css" />
+    <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+    <!-- 顶部导航 -->
+    <header class="header">
+        <div class="header-left">
+            <h1>{{ title }}</h1>
+            <span class="subtitle">{{ subtitle }}</span>
+        </div>
+        <div class="header-right">
+            <span id="stats-info" class="stats-info">加载中...</span>
+            <button class="btn btn-success" onclick="showImportDialog()">📥 导入Excel</button>
+            <button class="btn btn-primary" onclick="showAddHouseholdDialog()">➕ 新增户</button>
+        </div>
+    </header>
+
+    <!-- 主布局：左侧地图 + 右侧数据 -->
+    <div class="main-container">
+        <!-- 左侧地图 -->
+        <div class="map-panel" id="mapPanel">
+            <!-- 组选择器（航拍图切换） -->
+            {% if aerial_groups|length > 1 %}
+            <div class="group-switcher" id="groupSwitcher">
+                {% for g in aerial_groups %}
+                <button class="group-tab {% if g == default_aerial_group %}active{% endif %}" data-group="{{ g }}" onclick="switchAerialGroup('{{ g }}')">
+                    📍 {{ g }}
+                </button>
+                {% endfor %}
+            </div>
+            {% endif %}
+            <div id="map"></div>
+            <div class="map-legend">
+                {% for ht in house_types[:6] %}
+                <span class="legend-item"><span class="legend-dot dot-{{ loop.index }}"></span>{{ ht }}</span>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- 右侧数据面板 -->
+        <div class="data-panel">
+            <!-- 搜索筛选栏 -->
+            <div class="search-bar">
+                <input type="text" id="searchInput" placeholder="🔍 搜索户主/成员姓名/电话/户编号..." onkeyup="handleSearch()">
+                <select id="filterType" onchange="handleSearch()">
+                    <option value="">全部类型</option>
+                    {% for ht in house_types %}
+                    <option value="{{ ht }}">{{ ht }}</option>
+                    {% endfor %}
+                </select>
+                <select id="filterGroup" onchange="handleSearch()">
+                    <option value="">全部小组</option>
+                    {% for g in default_groups %}
+                    <option value="{{ g }}">{{ g }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- 户列表 -->
+            <div class="table-container">
+                <table id="householdTable">
+                    <thead>
+                        <tr>
+                            <th>户编号</th>
+                            <th>户主</th>
+                            <th>电话</th>
+                            <th>小组</th>
+                            <th>类型</th>
+                            <th>人数</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody">
+                        <tr><td colspan="7" class="empty-hint">暂无数据，请导入Excel或手动新增</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- 分页 -->
+            <div class="pagination" id="pagination"></div>
+        </div>
+    </div>
+
+    <!-- ==================== 弹窗：户表单 ==================== -->
+    <div class="modal-overlay" id="householdModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2 id="modalTitle">新增户</h2>
+                <button class="btn-close" onclick="closeModal('householdModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="hhId">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>户编号 <span class="required">*</span></label>
+                        <input type="text" id="hhNumber" placeholder="如：H001">
+                    </div>
+                    <div class="form-group">
+                        <label>户主姓名 <span class="required">*</span></label>
+                        <input type="text" id="hhName" placeholder="户主姓名">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>联系电话</label>
+                        <input type="text" id="hhPhone" placeholder="联系电话">
+                    </div>
+                    <div class="form-group">
+                        <label>村民小组</label>
+                        <select id="hhGroup">
+                            <option value="">请选择</option>
+                            {% for g in default_groups %}
+                            <option value="{{ g }}">{{ g }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>户类型</label>
+                        <select id="hhType">
+                            {% for ht in house_types %}
+                            <option value="{{ ht }}">{{ ht }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>地址</label>
+                        <input type="text" id="hhAddress" placeholder="详细地址">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>X 坐标（像素）</label>
+                        <input type="number" id="hhLat" step="any" placeholder="图上横坐标，如：1200">
+                    </div>
+                    <div class="form-group">
+                        <label>Y 坐标（像素）</label>
+                        <input type="number" id="hhLng" step="any" placeholder="图上纵坐标，如：800">
+                    </div>
+                </div>
+                <div class="form-group" style="font-size:12px;color:#888;margin-top:-8px;">
+                    💡 点击下方航拍图可自动获取坐标
+                </div>
+                <div class="form-group">
+                    <label>照片</label>
+                    <div class="photo-area">
+                        <input type="file" id="hhPhoto" accept="image/*" onchange="previewPhoto(this)">
+                        <input type="hidden" id="hhPhotoPath">
+                        <img id="photoPreview" class="photo-preview" style="display:none">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>备注</label>
+                    <textarea id="hhNotes" rows="2" placeholder="备注信息"></textarea>
+                </div>
+                <!-- 坐标预览小地图 -->
+                <div id="miniMap" class="mini-map" style="display:none;"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-default" onclick="closeModal('householdModal')">取消</button>
+                <button class="btn btn-primary" onclick="saveHousehold()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== 弹窗：户详情 ==================== -->
+    <div class="modal-overlay" id="detailModal">
+        <div class="modal modal-lg">
+            <div class="modal-header">
+                <h2 id="detailTitle">户详情</h2>
+                <button class="btn-close" onclick="closeModal('detailModal')">&times;</button>
+            </div>
+            <div class="modal-body" id="detailContent"></div>
+            <div class="modal-footer">
+                <button class="btn btn-default" onclick="closeModal('detailModal')">关闭</button>
+                <button class="btn btn-primary" onclick="editFromDetail()">编辑</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== 弹窗：成员表单 ==================== -->
+    <div class="modal-overlay" id="memberModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2 id="memberModalTitle">添加成员</h2>
+                <button class="btn-close" onclick="closeModal('memberModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="memberId">
+                <input type="hidden" id="memberHhId">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>姓名 <span class="required">*</span></label>
+                        <input type="text" id="memberName">
+                    </div>
+                    <div class="form-group">
+                        <label>与户主关系</label>
+                        <select id="memberRelation">
+                            <option value="">请选择</option>
+                            {% for r in relations %}
+                            <option value="{{ r }}">{{ r }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>性别</label>
+                        <select id="memberGender">
+                            <option value="">请选择</option>
+                            {% for g in genders %}
+                            <option value="{{ g }}">{{ g }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>联系电话</label>
+                        <input type="text" id="memberPhone">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>身份证号</label>
+                        <input type="text" id="memberIdCard">
+                    </div>
+                    <div class="form-group">
+                        <label>出生日期</label>
+                        <input type="date" id="memberBirth">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>备注</label>
+                    <textarea id="memberNotes" rows="2"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-default" onclick="closeModal('memberModal')">取消</button>
+                <button class="btn btn-primary" onclick="saveMember()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== 弹窗：导入Excel ==================== -->
+    <div class="modal-overlay" id="importModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>导入Excel台账</h2>
+                <button class="btn-close" onclick="closeModal('importModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="import-hint">
+                    <p><strong>Excel 格式要求：</strong></p>
+                    <ul>
+                        <li>工作表1：<code>户信息</code> — 包含户编号、户主姓名等列</li>
+                        <li>工作表2：<code>成员信息</code> — 包含姓名、所属户编号等列</li>
+                        <li>列名支持模糊匹配（如"户编号"/"编号"/"序号"均可识别）</li>
+                    </ul>
+                </div>
+                <div class="form-group">
+                    <label>选择文件 (.xlsx)</label>
+                    <input type="file" id="importFile" accept=".xlsx,.xls">
+                </div>
+                <div id="importResult" class="import-result" style="display:none;"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-default" onclick="closeModal('importModal')">取消</button>
+                <button class="btn btn-success" onclick="doImport()">开始导入</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 提示消息 -->
+    <div id="toast" class="toast" style="display:none;"></div>
+
+    <script src="https://cdn.bootcdn.net/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+    <script>
+        // 注入服务端配置到前端
+        window.APP_CONFIG = {
+            // 多图分组配置
+            groupAerialConfig: {{ group_aerial_config | tojson }},
+            defaultAerialGroup: "{{ default_aerial_group }}",
+            // 兼容旧版单图（无分组时使用）
+            aerialImage: "/static/{{ aerial_image }}",
+            aerialWidth: {{ aerial_width }},
+            aerialHeight: {{ aerial_height }},
+            enablePhoto: {{ 'true' if enable_photo else 'false' }},
+            itemsPerPage: {{ items_per_page }}
+        };
+    </script>
+    <script src="/static/js/main.js"></script>
+    <script src="/static/js/map.js"></script>
+    <script src="/static/js/table.js"></script>
+</body>
+</html>
