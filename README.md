@@ -1,8 +1,48 @@
-# 村户信息管理系统 - 开发文档
+<div align="center">
+
+# 🏘️ 村户信息管理系统
+
+**Village Household Management System**
+
+[![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python&logoColor=white)](https://www.python.org/)
+[![Flask](https://img.shields.io/badge/Flask-2.3+-black?logo=flask)](https://flask.palletsprojects.com/)
+[![SQLite](https://img.shields.io/badge/SQLite-3-blue?logo=sqlite&logoColor=white)](https://www.sqlite.org/)
+[![Leaflet](https://img.shields.io/badge/Leaflet-1.9.4-green?logo=leaflet)](https://leafletjs.com/)
+[![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
+
+*完全离线 · 单机运行 · Excel 台账导入 · 航拍图住户标注 · 多维筛选查询*
+
+</div>
+
+---
+
+## 📖 目录
+
+- [1. 项目概述](#1-项目概述)
+- [2. 快速启动](#2-快速启动)
+- [3. 项目结构](#3-项目结构)
+- [4. 数据模型](#4-数据模型)
+- [5. API 接口](#5-api-接口)
+- [6. Excel 导入格式](#6-excel-导入格式)
+- [7. 迁移指南](#7-迁移指南)
+- [8. 离线部署说明](#8-离线部署说明)
+- [9. 开发日志](#9-开发日志)
+- [10. 依赖](#10-依赖)
+
+---
 
 ## 1. 项目概述
 
 完全离线、单机运行的村户信息管理系统。支持 Excel 台账导入、**本地航拍图**住户标注、增删改查与多维度筛选。
+
+| 特性 | 说明 |
+|------|------|
+| 🔌 完全离线 | 无需网络，本地航拍图作底图 |
+| 📊 Excel 导入 | 一键导入户信息和成员台账 |
+| 🗺️ 地图标注 | 基于 Leaflet，航拍图上精确定位住户 |
+| 🔍 多维筛选 | 按户编号、户主、小组、户类型等快速检索 |
+| 📸 照片管理 | 支持上传住户照片 |
+| 🚀 一键启动 | Windows/Linux/Mac 均有启动脚本 |
 
 **技术栈**：Python 3.8+ / Flask / SQLite / 原生 JavaScript / Leaflet.js（本地引用）
 
@@ -20,18 +60,11 @@ AERIAL_HEIGHT = 3000              # 图片实际高度（像素）
 
 ### ② 启动系统
 
-**Windows**：双击 `run.bat`
-
-**Linux/Mac**：
-```bash
-chmod +x run.sh && ./run.sh
-```
-
-**手动启动**：
-```bash
-pip install -r requirements.txt
-python app.py
-```
+| 系统 | 方式 |
+|------|------|
+| **Windows** | 双击 `run.bat` |
+| **Linux/Mac** | `chmod +x run.sh && ./run.sh` |
+| **手动启动** | `pip install -r requirements.txt` → `python app.py` |
 
 浏览器访问：**http://127.0.0.1:5000**
 
@@ -99,19 +132,19 @@ VillageSystem/
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | /api/households | 户列表（支持 keyword/type/group 筛选，分页） |
-| GET | /api/households/:id | 户详情（含成员列表） |
-| POST | /api/households | 新增户 |
-| PUT | /api/households/:id | 编辑户 |
-| DELETE | /api/households/:id | 删除户（级联删除成员） |
-| GET | /api/households/:id/members | 获取某户成员 |
-| POST | /api/households/:id/members | 添加成员 |
-| PUT | /api/members/:id | 编辑成员 |
-| DELETE | /api/members/:id | 删除成员 |
-| POST | /api/households/upload-photo | 上传照片 |
-| POST | /api/import-excel | 导入 Excel 台账 |
-| GET | /api/stats | 统计数据 |
-| GET | /api/map-data | 地图标注数据 |
+| `GET` | `/api/households` | 户列表（支持 keyword/type/group 筛选，分页） |
+| `GET` | `/api/households/:id` | 户详情（含成员列表） |
+| `POST` | `/api/households` | 新增户 |
+| `PUT` | `/api/households/:id` | 编辑户 |
+| `DELETE` | `/api/households/:id` | 删除户（级联删除成员） |
+| `GET` | `/api/households/:id/members` | 获取某户成员 |
+| `POST` | `/api/households/:id/members` | 添加成员 |
+| `PUT` | `/api/members/:id` | 编辑成员 |
+| `DELETE` | `/api/members/:id` | 删除成员 |
+| `POST` | `/api/households/upload-photo` | 上传照片 |
+| `POST` | `/api/import-excel` | 导入 Excel 台账 |
+| `GET` | `/api/stats` | 统计数据 |
+| `GET` | `/api/map-data` | 地图标注数据 |
 
 ---
 
@@ -127,7 +160,7 @@ VillageSystem/
 |--------|------|----------|----------|------------|------|----------|------|
 | H001 | 李四 | 420xxx | 139xxxx | 配偶 | 女 | 1985-03 | |
 
-> 列名支持模糊匹配，如"户编号"/"编号"/"序号"均可识别。
+> 💡 列名支持模糊匹配，如"户编号"/"编号"/"序号"均可识别。
 
 ---
 
@@ -179,8 +212,16 @@ HOUSEHOLD_EXCEL_COLUMNS = { ... }
 
 ## 10. 依赖
 
-- **Python 3.8+**
-- Flask ≥ 2.3.0
-- Flask-SQLAlchemy ≥ 3.0.0
-- openpyxl ≥ 3.1.0
-- Leaflet 1.9.4（前端 CDN）
+| 包 | 版本要求 |
+|------|----------|
+| 🐍 Python | ≥ 3.8 |
+| Flask | ≥ 2.3.0 |
+| Flask-SQLAlchemy | ≥ 3.0.0 |
+| openpyxl | ≥ 3.1.0 |
+| 🍃 Leaflet | 1.9.4（前端 CDN） |
+
+---
+
+<div align="center">
+<sub>Made with ❤️ for rural digitalization</sub>
+</div>
