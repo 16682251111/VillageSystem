@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ title }}</title>
-    <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/leaflet/1.9.4/leaflet.css" />
     <link rel="stylesheet" href="/static/css/style.css" />
 </head>
 <body>
@@ -21,11 +20,10 @@
         </div>
     </header>
 
-    <!-- 主布局：左侧地图 + 右侧数据 -->
+    <!-- 主布局 -->
     <div class="main-container">
         <!-- 左侧地图 -->
         <div class="map-panel" id="mapPanel">
-            <!-- 组选择器（航拍图切换） -->
             {% if aerial_groups|length > 1 %}
             <div class="group-switcher" id="groupSwitcher">
                 {% for g in aerial_groups %}
@@ -45,7 +43,6 @@
 
         <!-- 右侧数据面板 -->
         <div class="data-panel">
-            <!-- 搜索筛选栏 -->
             <div class="search-bar">
                 <input type="text" id="searchInput" placeholder="🔍 搜索户主/成员姓名/电话/户编号..." onkeyup="handleSearch()">
                 <select id="filterType" onchange="handleSearch()">
@@ -62,7 +59,6 @@
                 </select>
             </div>
 
-            <!-- 户列表 -->
             <div class="table-container">
                 <table id="householdTable">
                     <thead>
@@ -71,7 +67,7 @@
                             <th>户主</th>
                             <th>电话</th>
                             <th>小组</th>
-                            <th>类型</th>
+                            <th>门牌</th>
                             <th>人数</th>
                             <th>操作</th>
                         </tr>
@@ -81,15 +77,13 @@
                     </tbody>
                 </table>
             </div>
-
-            <!-- 分页 -->
             <div class="pagination" id="pagination"></div>
         </div>
     </div>
 
-    <!-- ==================== 弹窗：户表单 ==================== -->
+    <!-- ==================== 户表单弹窗 ==================== -->
     <div class="modal-overlay" id="householdModal">
-        <div class="modal">
+        <div class="modal modal-lg">
             <div class="modal-header">
                 <h2 id="modalTitle">新增户</h2>
                 <button class="btn-close" onclick="closeModal('householdModal')">&times;</button>
@@ -98,8 +92,8 @@
                 <input type="hidden" id="hhId">
                 <div class="form-row">
                     <div class="form-group">
-                        <label>户编号 <span class="required">*</span></label>
-                        <input type="text" id="hhNumber" placeholder="如：H001">
+                        <label>户主编码 <span class="required">*</span></label>
+                        <input type="text" id="hhNumber" placeholder="如：T1_H_001_01">
                     </div>
                     <div class="form-group">
                         <label>户主姓名 <span class="required">*</span></label>
@@ -131,37 +125,49 @@
                         </select>
                     </div>
                     <div class="form-group">
-                        <label>地址</label>
-                        <input type="text" id="hhAddress" placeholder="详细地址">
+                        <label>门牌号</label>
+                        <input type="text" id="hhAddress" placeholder="如：1-22">
                     </div>
                 </div>
                 <div class="form-row">
                     <div class="form-group">
                         <label>X 坐标（像素）</label>
-                        <input type="number" id="hhLat" step="any" placeholder="图上横坐标，如：1200">
+                        <input type="number" id="hhLat" step="any" placeholder="图上横坐标" onchange="onCoordChange()">
                     </div>
                     <div class="form-group">
                         <label>Y 坐标（像素）</label>
-                        <input type="number" id="hhLng" step="any" placeholder="图上纵坐标，如：800">
+                        <input type="number" id="hhLng" step="any" placeholder="图上纵坐标" onchange="onCoordChange()">
                     </div>
                 </div>
-                <div class="form-group" style="font-size:12px;color:#888;margin-top:-8px;">
-                    💡 点击下方航拍图可自动获取坐标
+                <div class="form-tip">💡 点击地图可自动获取像素坐标；也可在列表中点击「📍标注」按钮进入标注模式</div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>种植信息</label>
+                        <textarea id="hhPlanting" rows="2" placeholder="如：土豆，自有20亩"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>养殖信息</label>
+                        <textarea id="hhBreeding" rows="2" placeholder="如：养猪10头"></textarea>
+                    </div>
                 </div>
                 <div class="form-group">
-                    <label>照片</label>
-                    <div class="photo-area">
-                        <input type="file" id="hhPhoto" accept="image/*" onchange="previewPhoto(this)">
+                    <label>其他备注</label>
+                    <textarea id="hhNotes" rows="2" placeholder="其他备注信息"></textarea>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>房照</label>
+                        <input type="file" id="hhPhoto" accept="image/*" onchange="previewPhoto(this, 'photoPreview')">
                         <input type="hidden" id="hhPhotoPath">
                         <img id="photoPreview" class="photo-preview" style="display:none">
                     </div>
+                    <div class="form-group">
+                        <label>个照</label>
+                        <input type="file" id="hhPersonalPhoto" accept="image/*" onchange="previewPhoto(this, 'personalPreview')">
+                        <input type="hidden" id="hhPersonalPhotoPath">
+                        <img id="personalPreview" class="photo-preview" style="display:none">
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label>备注</label>
-                    <textarea id="hhNotes" rows="2" placeholder="备注信息"></textarea>
-                </div>
-                <!-- 坐标预览小地图 -->
-                <div id="miniMap" class="mini-map" style="display:none;"></div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-default" onclick="closeModal('householdModal')">取消</button>
@@ -170,7 +176,7 @@
         </div>
     </div>
 
-    <!-- ==================== 弹窗：户详情 ==================== -->
+    <!-- ==================== 户详情弹窗 ==================== -->
     <div class="modal-overlay" id="detailModal">
         <div class="modal modal-lg">
             <div class="modal-header">
@@ -180,12 +186,13 @@
             <div class="modal-body" id="detailContent"></div>
             <div class="modal-footer">
                 <button class="btn btn-default" onclick="closeModal('detailModal')">关闭</button>
+                <button class="btn btn-warning" id="btnAnnotate" onclick="annotateFromDetail()">📍 标注位置</button>
                 <button class="btn btn-primary" onclick="editFromDetail()">编辑</button>
             </div>
         </div>
     </div>
 
-    <!-- ==================== 弹窗：成员表单 ==================== -->
+    <!-- ==================== 成员表单弹窗 ==================== -->
     <div class="modal-overlay" id="memberModal">
         <div class="modal">
             <div class="modal-header">
@@ -197,9 +204,15 @@
                 <input type="hidden" id="memberHhId">
                 <div class="form-row">
                     <div class="form-group">
-                        <label>姓名 <span class="required">*</span></label>
-                        <input type="text" id="memberName">
+                        <label>成员编码</label>
+                        <input type="text" id="memberCode" placeholder="如：T1_H_001_02">
                     </div>
+                    <div class="form-group">
+                        <label>姓名 <span class="required">*</span></label>
+                        <input type="text" id="memberName" placeholder="成员姓名">
+                    </div>
+                </div>
+                <div class="form-row">
                     <div class="form-group">
                         <label>与户主关系</label>
                         <select id="memberRelation">
@@ -209,8 +222,6 @@
                             {% endfor %}
                         </select>
                     </div>
-                </div>
-                <div class="form-row">
                     <div class="form-group">
                         <label>性别</label>
                         <select id="memberGender">
@@ -220,24 +231,26 @@
                             {% endfor %}
                         </select>
                     </div>
+                </div>
+                <div class="form-row">
                     <div class="form-group">
                         <label>联系电话</label>
-                        <input type="text" id="memberPhone">
+                        <input type="text" id="memberPhone" placeholder="联系电话">
+                    </div>
+                    <div class="form-group">
+                        <label>身份证号</label>
+                        <input type="text" id="memberIdCard" placeholder="身份证号">
                     </div>
                 </div>
                 <div class="form-row">
                     <div class="form-group">
-                        <label>身份证号</label>
-                        <input type="text" id="memberIdCard">
-                    </div>
-                    <div class="form-group">
                         <label>出生日期</label>
                         <input type="date" id="memberBirth">
                     </div>
-                </div>
-                <div class="form-group">
-                    <label>备注</label>
-                    <textarea id="memberNotes" rows="2"></textarea>
+                    <div class="form-group">
+                        <label>备注</label>
+                        <input type="text" id="memberNotes" placeholder="备注">
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">
@@ -247,7 +260,7 @@
         </div>
     </div>
 
-    <!-- ==================== 弹窗：导入Excel ==================== -->
+    <!-- ==================== 导入Excel弹窗 ==================== -->
     <div class="modal-overlay" id="importModal">
         <div class="modal">
             <div class="modal-header">
@@ -256,11 +269,12 @@
             </div>
             <div class="modal-body">
                 <div class="import-hint">
-                    <p><strong>Excel 格式要求：</strong></p>
+                    <p><strong>Excel 格式要求（每 sheet 一组）：</strong></p>
                     <ul>
-                        <li>工作表1：<code>户信息</code> — 包含户编号、户主姓名等列</li>
-                        <li>工作表2：<code>成员信息</code> — 包含姓名、所属户编号等列</li>
-                        <li>列名支持模糊匹配（如"户编号"/"编号"/"序号"均可识别）</li>
+                        <li>每个工作表以组名命名（如「一组」「二组」）</li>
+                        <li>第1行：组名信息（如「村：一组  组长：xxx」）</li>
+                        <li>第2行：表头（序号、户主、成员、关系、身份证号、性别、电话、门牌、种植、养殖、其他等）</li>
+                        <li>同一「序号」的行归为同一户，第一行为户信息，其余行为成员</li>
                     </ul>
                 </div>
                 <div class="form-group">
@@ -279,14 +293,10 @@
     <!-- 提示消息 -->
     <div id="toast" class="toast" style="display:none;"></div>
 
-    <script src="https://cdn.bootcdn.net/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
     <script>
-        // 注入服务端配置到前端
         window.APP_CONFIG = {
-            // 多图分组配置
             groupAerialConfig: {{ group_aerial_config | tojson }},
             defaultAerialGroup: "{{ default_aerial_group }}",
-            // 兼容旧版单图（无分组时使用）
             aerialImage: "/static/{{ aerial_image }}",
             aerialWidth: {{ aerial_width }},
             aerialHeight: {{ aerial_height }},

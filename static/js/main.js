@@ -2,14 +2,13 @@
  * 村户信息管理系统 - 主入口 & 通用工具
  */
 
-// ==================== 全局状态 ====================
+// 全局状态
 const STATE = {
     currentPage: 1,
-    currentHouseholdId: null,  // 当前查看/编辑的户ID
+    currentHouseholdId: null,
 };
 
-// ==================== 工具函数 ====================
-
+// 工具函数
 function $(id) { return document.getElementById(id); }
 
 function showToast(msg, type = 'success') {
@@ -18,7 +17,7 @@ function showToast(msg, type = 'success') {
     toast.className = `toast ${type}`;
     toast.style.display = 'block';
     clearTimeout(toast._timeout);
-    toast._timeout = setTimeout(() => { toast.style.display = 'none'; }, 2500);
+    toast._timeout = setTimeout(() => { toast.style.display = 'none'; }, 3000);
 }
 
 async function api(url, options = {}) {
@@ -46,7 +45,13 @@ async function uploadFile(url, file) {
 }
 
 function openModal(id) { $(id).classList.add('show'); }
-function closeModal(id) { $(id).classList.remove('show'); }
+function closeModal(id) {
+    $(id).classList.remove('show');
+    // 关闭详情弹窗时退出标注模式
+    if (id === 'detailModal' && MAP_STATE && MAP_STATE.annotateMode) {
+        if (typeof exitAnnotateMode === 'function') exitAnnotateMode();
+    }
+}
 
 // 点击遮罩关闭
 document.querySelectorAll('.modal-overlay').forEach(overlay => {
@@ -59,15 +64,20 @@ document.querySelectorAll('.modal-overlay').forEach(overlay => {
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
         document.querySelectorAll('.modal-overlay.show').forEach(m => m.classList.remove('show'));
+        if (typeof exitAnnotateMode === 'function') exitAnnotateMode();
     }
 });
 
-// ==================== 初始化 ====================
+function esc(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
 
+// 初始化
 async function initApp() {
-    // 初始化地图
     initMap();
-    // 加载数据
     await loadHouseholds();
     await loadStats();
 }
@@ -82,5 +92,4 @@ function loadStats() {
     });
 }
 
-// 页面加载完成后初始化
 document.addEventListener('DOMContentLoaded', initApp);

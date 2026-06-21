@@ -359,7 +359,158 @@ body {
     to { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
 
-/* Leaflet 弹窗样式 */
+/* ====== 自定义地图组件 ====== */
+#map {
+    position: relative;
+    overflow: hidden;
+    cursor: grab;
+    background: #e8e8e8;
+}
+.map-img-wrapper {
+    position: absolute;
+    top: 0; left: 0;
+}
+.map-img-wrapper img {
+    display: block;
+    user-select: none;
+    -webkit-user-drag: none;
+}
+
+/* 地图标记 — 大号醒目 */
+.map-marker {
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+.map-marker:hover {
+    transform: translate(-50%, -50%) scale(1.4) !important;
+    z-index: 20 !important;
+    box-shadow: 0 0 0 10px rgba(0,0,0,0.12), 0 4px 18px rgba(0,0,0,0.5) !important;
+}
+
+/* 地图弹窗 — 自适应宽，带三角箭头指回标记点 */
+.map-popup {
+    position: absolute;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.22);
+    padding: 16px 18px 14px;
+    z-index: 200;
+    font-size: 13px;
+    line-height: 1.7;
+}
+.map-popup .popup-arrow {
+    position: absolute;
+    top: 50%;
+    width: 0; height: 0;
+    border: 10px solid transparent;
+    transform: translateY(-50%);
+    pointer-events: none;
+}
+/* 箭头在左侧（弹窗在标记点右侧） */
+.map-popup[style*="--arrow-side:left"] .popup-arrow,
+.map-popup:not([style*="--arrow-side"]) .popup-arrow {
+    left: -19px;
+    border-right-color: #fff;
+}
+/* 箭头在右侧（弹窗在标记点左侧） */
+.map-popup[style*="--arrow-side:right"] .popup-arrow {
+    left: auto; right: -19px;
+    border-left-color: #fff;
+}
+.map-popup h4 {
+    margin: 0 0 10px;
+    font-size: 15px; font-weight: 600; color: #222;
+    padding-right: 24px;
+}
+.map-popup .popup-row {
+    display: flex; gap: 8px; margin: 3px 0;
+    color: #555; align-items: center;
+}
+.map-popup .popup-label {
+    color: #999; font-size: 12px; min-width: 42px;
+}
+.map-popup .popup-type-badge {
+    display: inline-block;
+    padding: 2px 12px;
+    border-radius: 12px;
+    color: #fff; font-size: 12px; font-weight: 500;
+}
+.map-popup .popup-close {
+    position: absolute; top: 10px; right: 12px;
+    cursor: pointer; font-size: 22px; color: #bbb; line-height: 1;
+    width: 26px; height: 26px; text-align: center;
+    border-radius: 50%;
+    transition: 0.15s;
+}
+.map-popup .popup-close:hover { color: #333; background: #f0f0f0; }
+.map-popup .popup-btns {
+    margin-top: 14px; display: flex; gap: 8px;
+}
+.map-popup .popup-btns button {
+    flex: 1;
+    padding: 7px 12px; font-size: 13px; cursor: pointer;
+    border-radius: 6px; border: none;
+    font-weight: 500;
+    transition: 0.15s;
+}
+.btn-popup-detail {
+    background: #f0f5ff; color: #4a90d9;
+    border: 1px solid #d6e4ff !important;
+}
+.btn-popup-detail:hover { background: #d6e4ff; }
+.btn-popup-annotate {
+    background: #fef3e2; color: #e67e22;
+    border: 1px solid #fce4c8 !important;
+}
+.btn-popup-annotate:hover { background: #fce4c8; }
+
+/* 点击提示圆 */
+.map-click-hint {
+    position: absolute;
+    width: 24px; height: 24px;
+    border: 3px solid #ff4d4f;
+    border-radius: 50%;
+    background: rgba(255,77,79,0.25);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 50;
+    animation: hintPulse 0.5s ease-out;
+}
+@keyframes hintPulse {
+    from { transform: translate(-50%, -50%) scale(0.3); opacity: 0.8; }
+    to { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+}
+
+/* 坐标跟随标签 */
+.map-coord-label {
+    position: absolute;
+    background: rgba(0,0,0,0.75);
+    color: #fff;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    pointer-events: none;
+    z-index: 101;
+    white-space: nowrap;
+}
+
+/* ====== 表单提示 ====== */
+.form-tip {
+    font-size: 12px; color: #999; margin: -8px 0 12px;
+    padding: 4px 8px; background: #f0f5ff;
+    border-radius: 4px;
+}
+
+/* ====== 标注模式行高亮 ====== */
+tr.annotating {
+    background: #fff7e6 !important;
+    border-left: 3px solid #faad14;
+}
+
+/* ====== 按钮变体 ====== */
+.btn-warning { background: #faad14; color: #fff; }
+.btn-warning:hover { background: #d48806; }
+
+/* 保留 Leaflet 弹窗样式以防兼容 */
 .leaflet-popup-content { font-size: 13px; min-width: 160px; }
 .leaflet-popup-content h4 { margin-bottom: 6px; }
 .leaflet-popup-content p { margin: 2px 0; color: var(--text-light); }

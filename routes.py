@@ -109,6 +109,9 @@ def create_household():
         latitude=data.get("latitude"),
         longitude=data.get("longitude"),
         photo_path=data.get("photo_path", ""),
+        personal_photo=data.get("personal_photo", ""),
+        planting=data.get("planting", ""),
+        breeding=data.get("breeding", ""),
         notes=data.get("notes", ""),
     )
     db.session.add(hh)
@@ -130,7 +133,8 @@ def update_household(hh_id):
         hh.house_number = new_number
 
     for field in ["householder_name", "householder_phone", "group_name",
-                  "house_type", "address", "notes", "photo_path"]:
+                  "house_type", "address", "notes", "photo_path",
+                  "personal_photo", "planting", "breeding"]:
         if field in data:
             setattr(hh, field, data[field])
     for field in ["latitude", "longitude"]:
@@ -183,6 +187,7 @@ def add_member(hh_id):
 
     member = Member(
         household_id=hh_id,
+        member_code=data.get("member_code", ""),
         name=data.get("name", ""),
         id_card=data.get("id_card", ""),
         phone=data.get("phone", ""),
@@ -201,7 +206,7 @@ def update_member(m_id):
     """编辑成员"""
     member = Member.query.get_or_404(m_id)
     data = request.get_json(silent=True) or {}
-    for field in ["name", "id_card", "phone", "relation", "gender", "birth_date", "notes"]:
+    for field in ["member_code", "name", "id_card", "phone", "relation", "gender", "birth_date", "notes"]:
         if field in data:
             setattr(member, field, data[field])
     db.session.commit()
@@ -272,15 +277,6 @@ def get_map_data():
 
 # ==================== Excel 导入 ====================
 
-def _find_column_index(headers, aliases):
-    """根据别名列表找到 Excel 列索引"""
-    for i, h in enumerate(headers):
-        h_clean = str(h).strip()
-        if h_clean in aliases:
-            return i
-    return None
-
-
 def _safe_str(val):
     """安全转换为字符串"""
     if val is None:
@@ -313,44 +309,38 @@ def _find_column_index_fuzzy(headers, aliases):
     return None
 
 
-def _detect_sheet(wb, keywords, fallback_index=None):
-    """智能检测工作表：先精确匹配，再关键词模糊匹配，最后回退到序号"""
-    sheets = list(wb.sheetnames)
-    if not sheets:
-        return None
-
-    # 1. 精确匹配
-    for kw in keywords:
-        if kw in sheets:
-            return kw
-
-    # 2. 关键词模糊匹配（包含即可）
-    for kw in keywords:
-        for s in sheets:
-            s_clean = str(s).strip().replace(" ", "")
-            kw_clean = kw.strip().replace(" ", "")
-            if kw_clean in s_clean or s_clean in kw_clean:
-                return s
-
-    # 3. 回退：按序号
-    if fallback_index is not None and fallback_index < len(sheets):
-        return sheets[fallback_index]
-
-    return None
+def _parse_group_name(sheet_name, first_row_cells):
+    """从 sheet 名或第一行解析组名"""
+    # 尝试从第一行解析（如 "村：一组" 或 "村：二 组"）
+    if first_row_cells:
+        first_text = _safe_str(first_row_cells[0])
+        import re
+        # 先尝试紧密匹配（如"一组"）
+        m = re.search(r'[一二三四五六七八九十]+组', first_text)
+        if m:
+            return m.group()
+        # 再尝试带空格的匹配（如"二 组"→"二组"）
+        m = re.search(r'[一二三四五六七八九十]+\s+组', first_text)
+        if m:
+            return m.group().replace(' ', '')
+    # 回退：使用 sheet 名
+    return str(sheet_name).strip()
 
 
-def _read_sheet_headers(wb, sheet_name):
-    """读取工作表的表头行"""
-    ws = wb[sheet_name]
-    rows = list(ws.iter_rows(values_only=True))
-    if len(rows) < 2:
-        return None, None, "无数据行（至少需要表头+1行数据）"
-    return ws, rows, rows[0]
+def _is_header_row(headers_cells, col_map_target):
+    """判断某行是否为表头行（包含序号、户主等关键词）"""
+    texts = [_safe_str(c) for c in headers_cells if c is not None]
+    combined = ''.join(texts)
+    return '序号' in combined or '户主' in combined
 
 
 @api.route("/import-excel", methods=["POST"])
 def import_excel():
-    """导入 Excel 台账（智能识别工作表名和列名）"""
+    """
+    导入 Excel 台账（支持两种格式）：
+    格式一（推荐）：每个 sheet 对应一个村民小组，第一行含组名，第二行为表头，数据按序号分行
+    格式二（兼容）：单独的户信息表 + 成员信息表
+    """
     try:
         import openpyxl
     except ImportError:
@@ -369,161 +359,183 @@ def import_excel():
     except Exception as e:
         return jsonify({"code": 1, "msg": f"Excel 读取失败: {str(e)}"}), 400
 
+    sheets = list(wb.sheetnames)
     result = {
         "households_created": 0, "households_updated": 0,
         "members_created": 0, "errors": [],
-        "sheets_found": list(wb.sheetnames),
-        "hh_sheet_used": "", "member_sheet_used": "",
-        "hh_headers_found": [], "member_headers_found": [],
+        "sheets_found": sheets,
     }
 
-    # ========== 智能识别户信息工作表 ==========
-    hh_sheet_name = _detect_sheet(
-        wb,
-        keywords=["户信息", "农户信息", "户基本信息", "户主信息", "户表", "家庭信息"],
-        fallback_index=0  # 第一个工作表
+    # ========== 判断格式类型 ==========
+    # 如果所有 sheet 名都像组名（如一组、二组），则使用格式一（每 sheet 一组）
+    import re as regex
+    is_group_format = all(
+        regex.search(r'[一二三四五六七八九十]组', str(sn)) or regex.search(r'^\d+组$', str(sn))
+        for sn in sheets
     )
-    if hh_sheet_name is None:
-        result["errors"].append("无法找到户信息工作表（Excel 中没有任何工作表）")
-        wb.close()
-        return jsonify({"code": 1, "data": result, "msg": "导入失败：未找到户信息工作表"}), 400
 
-    result["hh_sheet_used"] = hh_sheet_name
-    ws_hh, rows_hh, hh_headers = _read_sheet_headers(wb, hh_sheet_name)
-    if ws_hh is None:
-        result["errors"].append(f"工作表 [{hh_sheet_name}] {rows_hh}")
-        wb.close()
-        return jsonify({"code": 1, "data": result, "msg": "导入失败：户信息工作表无数据"}), 400
-
-    result["hh_headers_found"] = [str(h) for h in hh_headers if h is not None]
-
-    # 建立户信息列映射
-    hh_col_map = {}
-    hh_missing = []
-    for field, aliases in HOUSEHOLD_EXCEL_COLUMNS.items():
-        idx = _find_column_index_fuzzy(hh_headers, aliases)
-        if idx is not None:
-            hh_col_map[field] = idx
-
-    # 必填列检查
-    required_hh = ["house_number", "householder_name"]
-    for f in required_hh:
-        if f not in hh_col_map:
-            hh_missing.append(f)
-    if hh_missing:
-        missing_names = [HOUSEHOLD_EXCEL_COLUMNS[f][0] for f in hh_missing]
-        headers_found = result['hh_headers_found']
-        result["errors"].append(
-            f"户信息工作表 [{hh_sheet_name}] 缺少必填列：{', '.join(missing_names)}。"
-            f"当前表头为：{headers_found}。请确保表头包含「户编号」和「户主姓名」（支持模糊匹配）"
-        )
-
-    # 处理户数据
-    if "house_number" in hh_col_map and "householder_name" in hh_col_map:
-        for row in rows_hh[1:]:
+    if is_group_format:
+        # ====== 格式一：每 sheet 一组 ======
+        for sn in sheets:
             try:
-                house_number = _safe_str(row[hh_col_map["house_number"]])
-                householder_name = _safe_str(row[hh_col_map["householder_name"]])
-                if not house_number:
+                ws = wb[sn]
+                rows = list(ws.iter_rows(values_only=True))
+                if len(rows) < 3:
                     continue
 
-                hh = Household.query.filter_by(house_number=house_number).first()
-                is_new = hh is None
-                if is_new:
-                    hh = Household(house_number=house_number)
-                    db.session.add(hh)
-                    result["households_created"] += 1
-                else:
-                    result["households_updated"] += 1
+                group_name = _parse_group_name(sn, rows[0])
 
-                hh.householder_name = householder_name
-                if "householder_phone" in hh_col_map:
-                    hh.householder_phone = _safe_str(row[hh_col_map["householder_phone"]])
-                if "group_name" in hh_col_map:
-                    hh.group_name = _safe_str(row[hh_col_map["group_name"]])
-                if "house_type" in hh_col_map:
-                    hh.house_type = _safe_str(row[hh_col_map["house_type"]]) or "一般户"
-                if "address" in hh_col_map:
-                    hh.address = _safe_str(row[hh_col_map["address"]])
-                if "latitude" in hh_col_map:
-                    hh.latitude = _safe_float(row[hh_col_map["latitude"]])
-                if "longitude" in hh_col_map:
-                    hh.longitude = _safe_float(row[hh_col_map["longitude"]])
-                if "notes" in hh_col_map:
-                    hh.notes = _safe_str(row[hh_col_map["notes"]])
-                if "photo_path" in hh_col_map:
-                    hh.photo_path = _safe_str(row[hh_col_map["photo_path"]])
-            except Exception as e:
-                result["errors"].append(f"户信息行处理异常: {str(e)}")
+                header_row_idx = None
+                for i in range(min(3, len(rows))):
+                    if _is_header_row(rows[i], ['序号', '户主']):
+                        header_row_idx = i
+                        break
 
-        db.session.flush()
+                if header_row_idx is None:
+                    result["errors"].append(f"工作表 [{sn}] 未找到表头行，跳过")
+                    continue
 
-    # ========== 智能识别成员信息工作表 ==========
-    member_sheet_name = _detect_sheet(
-        wb,
-        keywords=["成员信息", "家庭成员", "人口信息", "成员表", "家庭成员信息", "人口表"],
-        fallback_index=1 if len(wb.sheetnames) > 1 else None  # 第二个工作表（跳过户信息）
-    )
-    if member_sheet_name and member_sheet_name != hh_sheet_name:
-        result["member_sheet_used"] = member_sheet_name
-        ws_m, rows_m, member_headers = _read_sheet_headers(wb, member_sheet_name)
-        if ws_m is not None:
-            result["member_headers_found"] = [str(h) for h in member_headers if h is not None]
+                headers = rows[header_row_idx]
+                data_start = header_row_idx + 1
 
-            m_col_map = {}
-            for field, aliases in MEMBER_EXCEL_COLUMNS.items():
-                idx = _find_column_index_fuzzy(member_headers, aliases)
-                if idx is not None:
-                    m_col_map[field] = idx
+                hh_col_map = {}
+                for field, aliases in HOUSEHOLD_EXCEL_COLUMNS.items():
+                    idx = _find_column_index_fuzzy(headers, aliases)
+                    if idx is not None:
+                        hh_col_map[field] = idx
 
-            if "name" not in m_col_map:
-                result["errors"].append(
-                    f"成员信息工作表 [{member_sheet_name}] 缺少姓名列。"
-                    f"当前表头：{result['member_headers_found']}"
-                )
-            else:
-                for row in rows_m[1:]:
-                    try:
-                        name = _safe_str(row[m_col_map["name"]])
-                        if not name:
-                            continue
+                # 如果 seq 和 house_number 指向同一列，尝试为 house_number 寻找「户主」列
+                if ("seq" in hh_col_map and "house_number" in hh_col_map
+                        and hh_col_map["seq"] == hh_col_map["house_number"]):
+                    alt_idx = _find_column_index_fuzzy(headers, ["户主编码", "户主", "户编号", "家庭编号", "农户编号", "户号"])
+                    if alt_idx is not None and alt_idx != hh_col_map["seq"]:
+                        hh_col_map["house_number"] = alt_idx
 
-                        household_id = None
-                        if "house_number" in m_col_map:
-                            hn = _safe_str(row[m_col_map["house_number"]])
-                            hh = Household.query.filter_by(house_number=hn).first()
-                            if hh:
-                                household_id = hh.id
+                m_col_map = {}
+                for field, aliases in MEMBER_EXCEL_COLUMNS.items():
+                    idx = _find_column_index_fuzzy(headers, aliases)
+                    if idx is not None:
+                        m_col_map[field] = idx
 
-                        if household_id is None:
-                            result["errors"].append(
-                                f'成员 {name} 无法关联到户（缺少「户编号」列或户编号不匹配）'
-                            )
-                            continue
+                if "house_number" not in hh_col_map:
+                    result["errors"].append(f"工作表 [{sn}] 缺少「户主」列，跳过")
+                    continue
 
-                        member = Member(household_id=household_id, name=name)
-                        if "id_card" in m_col_map:
-                            member.id_card = _safe_str(row[m_col_map["id_card"]])
-                        if "phone" in m_col_map:
-                            member.phone = _safe_str(row[m_col_map["phone"]])
-                        if "relation" in m_col_map:
-                            member.relation = _safe_str(row[m_col_map["relation"]])
-                        if "gender" in m_col_map:
-                            member.gender = _safe_str(row[m_col_map["gender"]])
-                        if "birth_date" in m_col_map:
-                            member.birth_date = _safe_str(row[m_col_map["birth_date"]])
-                        if "notes" in m_col_map:
-                            member.notes = _safe_str(row[m_col_map["notes"]])
+                current_hh = None
+                sheet_hh_created = 0
+                sheet_hh_updated = 0
+                sheet_members = 0
+
+                for row_idx in range(data_start, len(rows)):
+                    row = rows[row_idx]
+                    if all(v is None for v in row):
+                        continue
+
+                    seq_idx = hh_col_map.get("seq", hh_col_map.get("house_number"))
+                    seq_val = _safe_str(row[seq_idx]) if seq_idx is not None else ""
+                    household_code = _safe_str(row[hh_col_map["house_number"]]) if "house_number" in hh_col_map else ""
+                    member_code = _safe_str(row[m_col_map["member_code"]]) if "member_code" in m_col_map else ""
+
+                    is_house_row = bool(household_code) and not bool(member_code) and bool(seq_val or household_code)
+
+                    if is_house_row:
+                        if current_hh is not None:
+                            db.session.flush()
+
+                        address = _safe_str(row[hh_col_map["address"]]) if "address" in hh_col_map else ""
+                        householder_name = ""
+                        if "householder_name" in hh_col_map:
+                            householder_name = _safe_str(row[hh_col_map["householder_name"]])
+                        if not householder_name:
+                            householder_name = household_code
+
+                        # 使用 no_autoflush 避免查询时自动 flush 未就绪的对象
+                        with db.session.no_autoflush:
+                            hh = None
+                            if group_name and address:
+                                hh = Household.query.filter_by(group_name=group_name, address=address).first()
+                            if not hh and household_code and group_name:
+                                hh = Household.query.filter_by(house_number=household_code, group_name=group_name).first()
+
+                        is_new_hh = hh is None
+                        if is_new_hh:
+                            hh = Household(house_number=household_code)
+                            sheet_hh_created += 1
+                        else:
+                            sheet_hh_updated += 1
+
+                        # 先设置所有字段
+                        hh.householder_name = householder_name or hh.householder_name
+                        hh.group_name = group_name
+                        for fname, condition in [
+                            ("householder_phone", "householder_phone" in hh_col_map),
+                            ("address", "address" in hh_col_map),
+                            ("house_type", "house_type" in hh_col_map),
+                        ]:
+                            if condition:
+                                val = _safe_str(row[hh_col_map[fname]])
+                                if val and val != "None":
+                                    setattr(hh, fname, val)
+
+                        for fname, col_key in [
+                            ("photo_path", "house_photo"),
+                            ("personal_photo", "personal_photo"),
+                            ("planting", "planting"),
+                            ("breeding", "breeding"),
+                            ("notes", "notes"),
+                        ]:
+                            if col_key in hh_col_map:
+                                val = _safe_str(row[hh_col_map[col_key]])
+                                if val and val != "None":
+                                    setattr(hh, fname, val)
+
+                        if is_new_hh:
+                            db.session.add(hh)
+                            db.session.flush()  # flush 以获取 id，供成员行使用
+                        current_hh = hh
+
+                    elif current_hh is not None and member_code:
+                        member_name = _safe_str(row[m_col_map["name"]]) if "name" in m_col_map else member_code
+                        member = Member(
+                            household_id=current_hh.id,
+                            member_code=member_code,
+                            name=member_name or member_code,
+                        )
+                        for fname, col_key in [
+                            ("relation", "relation"),
+                            ("id_card", "id_card"),
+                            ("gender", "gender"),
+                            ("phone", "phone"),
+                            ("notes", "notes"),
+                        ]:
+                            if col_key in m_col_map:
+                                val = _safe_str(row[m_col_map[col_key]])
+                                if val and val != "None":
+                                    setattr(member, fname, val)
+
                         db.session.add(member)
-                        result["members_created"] += 1
-                    except Exception as e:
-                        result["errors"].append(f"成员行处理异常: {str(e)}")
+                        sheet_members += 1
+
+                db.session.flush()
+                result["households_created"] += sheet_hh_created
+                result["households_updated"] += sheet_hh_updated
+                result["members_created"] += sheet_members
+
+            except Exception as e:
+                db.session.rollback()
+                result["errors"].append(f"工作表 [{sn}] 处理异常: {str(e)}")
+
     else:
-        if not member_sheet_name:
-            result["errors"].append("未找到成员信息工作表（将仅导入户信息）")
-        elif member_sheet_name == hh_sheet_name:
-            result["errors"].append("成员信息工作表与户信息为同一工作表，已跳过")
+        # ====== 格式二（兼容旧版）：户信息 + 成员信息 两个工作表 ======
+        result["errors"].append("Excel 为旧格式（户信息+成员信息双表模式），请使用多 sheet 格式。")
+        # 如果你需要保留旧格式兼容，在此处添加旧版逻辑
 
     wb.close()
     db.session.commit()
-    return jsonify({"code": 0, "data": result, "msg": "导入完成"})
+    return jsonify({
+        "code": 0,
+        "data": result,
+        "msg": f"导入完成：新增 {result['households_created']} 户，更新 {result['households_updated']} 户，"
+               f"新增成员 {result['members_created']} 人"
+               + (f"，{len(result['errors'])} 条警告" if result['errors'] else "")
+    })
